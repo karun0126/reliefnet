@@ -40,6 +40,8 @@ interface LeftDockNavbarProps {
   criticalIncidentCount?: number;
   activeVolunteerCount?: number;
   deployedAssetCount?: number;
+  completedMissionCount?: number;
+  nearbyAlertCount?: number;
   onTabChange: (tab: ActiveTab) => void;
   onSwitchRole: (role: UserRole) => void;
   onOpenReportModal: () => void;
@@ -56,9 +58,11 @@ export const LeftDockNavbar: React.FC<LeftDockNavbarProps> = ({
   onVolunteerSubTabChange,
   reporterSubTab = 'tracking',
   onReporterSubTabChange,
-  criticalIncidentCount = 6,
-  activeVolunteerCount = 34,
-  deployedAssetCount = 76,
+  criticalIncidentCount = 0,
+  activeVolunteerCount = 0,
+  deployedAssetCount = 0,
+  completedMissionCount = 0,
+  nearbyAlertCount = 0,
   onTabChange,
   onSwitchRole,
   onOpenReportModal,
@@ -125,7 +129,7 @@ export const LeftDockNavbar: React.FC<LeftDockNavbarProps> = ({
       label: 'Analytics & SLA',
       sublabel: 'Response Time & AI Audit',
       icon: BarChart3,
-      badge: '94% SLA',
+      badge: 'SLA',
       badgeType: 'neutral'
     }
   ];
@@ -145,7 +149,7 @@ export const LeftDockNavbar: React.FC<LeftDockNavbarProps> = ({
       label: 'Nearby Alerts',
       sublabel: 'Unclaimed Local Incidents',
       icon: AlertTriangle,
-      badge: '8 NEARBY',
+      badge: `${nearbyAlertCount} NEARBY`,
       badgeType: 'warn'
     },
     {
@@ -153,7 +157,7 @@ export const LeftDockNavbar: React.FC<LeftDockNavbarProps> = ({
       label: 'Mission History',
       sublabel: 'Completed Field Responses',
       icon: CheckCircle2,
-      badge: '42 DONE',
+      badge: `${completedMissionCount} DONE`,
       badgeType: 'neutral'
     }
   ];

@@ -16,6 +16,8 @@ export interface CurrentUser {
   completedMissions?: number;
   rating?: number;
   organization?: string;
+  /** Backend volunteer profile id (only for volunteers). */
+  volunteerId?: number;
 }
 
 
@@ -68,8 +70,10 @@ export interface Volunteer {
   skills: string[];
   status: 'AVAILABLE' | 'DEPLOYED' | 'OFFLINE';
   location: LocationCoordinates;
-  rating: number;
+  rating?: number;
   completedMissions: number;
+  /** Dispatch radius in km, straight from the volunteer record. */
+  radiusKm?: number;
   distanceKm?: number;
   matchScore?: number;
   matchReason?: string;

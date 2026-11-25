@@ -56,19 +56,12 @@ export const ReporterPortal: React.FC<ReporterPortalProps> = ({
   }, [activeTab]);
 
   const [liveChatNote, setLiveChatNote] = useState('');
-  const [chatMessages, setChatMessages] = useState<Record<string, { sender: string; text: string; time: string }[]>>({
-    'RN-8941': [
-      { sender: 'AI Grid', text: 'Incident classified as CRITICAL (Urgency Score: 98/100). Water rescue dispatch prioritized.', time: '4m ago' },
-      { sender: 'Arjun Mehta (Volunteer)', text: 'Deployed with rescue boat. Bypassing road 12 via 4B bypass. ETA 8 minutes.', time: '2m ago' }
-    ]
-  });
+  // Ground comms start empty: nothing is invented on a reporter's card.
+  const [chatMessages, setChatMessages] = useState<Record<string, { sender: string; text: string; time: string }[]>>({});
 
-  const reportedNeeds = needs.filter(n => 
-    n.reporterContact === currentUser.phone || 
-    n.reporterName?.toLowerCase().includes(currentUser.name.toLowerCase()) ||
-    n.urgency === 'CRITICAL' ||
-    n.status !== 'RESOLVED'
-  ).slice(0, 4);
+  // This list already comes from /api/needs/my, which the backend scopes to the
+  // signed-in reporter, so every card belongs to this person.
+  const reportedNeeds = needs;
 
   const handleSendChatUpdate = (needId: string) => {
     if (!liveChatNote.trim()) return;
@@ -92,6 +85,15 @@ export const ReporterPortal: React.FC<ReporterPortalProps> = ({
     }
   };
 
+  const statusLabel = (status: string) => {
+    switch (status) {
+      case 'ASSIGNED': return 'RESPONDER DISPATCHED';
+      case 'IN_PROGRESS': return 'RESPONDER EN ROUTE';
+      case 'RESOLVED': return 'INCIDENT RESOLVED';
+      default: return 'AWAITING TRIAGE';
+    }
+  };
+
   return (
     <div className="rn-reporter-portal">
       {/* Top Welcome & Reporter Profile Bar */}
@@ -104,9 +106,9 @@ export const ReporterPortal: React.FC<ReporterPortalProps> = ({
             <div className="rn-reporter-role-badge">CIVILIAN SCOUT &amp; CITIZEN PORTAL</div>
             <h2>{currentUser.name}</h2>
             <div className="rn-reporter-meta-row">
-              <span>📍 {currentUser.location?.address || 'Sector 4, East Valley'}</span>
+              <span>📍 {currentUser.location?.address || 'Location not provided'}</span>
               <span>•</span>
-              <span>📞 {currentUser.phone || '+91 98112 34567'}</span>
+              <span>📞 {currentUser.phone || 'Phone not provided'}</span>
               <span>•</span>
               <span className="rn-badge-verified">Verified Citizen Reporter</span>
             </div>
@@ -187,6 +189,9 @@ export const ReporterPortal: React.FC<ReporterPortalProps> = ({
                         </span>
                         <span className="rn-inc-cat-tag">{need.category}</span>
                         <span className="rn-inc-id-tag">Case #{need.id}</span>
+                        <span className={`rn-inc-status-tag is-${need.status.toLowerCase()}`}>
+                          {statusLabel(need.status)}
+                        </span>
                       </div>
                       <span className="rn-inc-time-tag">Reported {need.reportedAt}</span>
                     </div>
@@ -243,24 +248,21 @@ export const ReporterPortal: React.FC<ReporterPortalProps> = ({
                       </div>
                     </div>
 
-                    {/* Assigned Volunteer Hero Banner */}
-                    {need.recommendedVolunteer && (
+                    {/* Assigned responder banner — mirrors the dispatch the coordinator made */}
+                    {need.status !== 'SUBMITTED' && (
                       <div className="rn-assigned-hero-box">
                         <div className="rn-ass-left">
                           <div className="rn-ass-avatar">
-                            {need.recommendedVolunteer.name.slice(0, 2).toUpperCase()}
+                            {(need.recommendedVolunteer?.name ?? 'HQ').slice(0, 2).toUpperCase()}
                           </div>
                           <div>
                             <div className="rn-ass-role-tag">ASSIGNED RESCUE RESPONDER</div>
-                            <h4>{need.recommendedVolunteer.name}</h4>
-                            <span className="rn-ass-sub">{need.recommendedVolunteer.role} • {need.recommendedVolunteer.distance}</span>
+                            <h4>{need.recommendedVolunteer?.name ?? 'Responder assigned by HQ'}</h4>
+                            <span className="rn-ass-sub">{need.recommendedVolunteer?.role ?? 'Field responder'}</span>
                           </div>
                         </div>
                         <div className="rn-ass-right">
-                          <a href="tel:+919899011223" className="rn-call-vol-btn">
-                            <Phone size={14} />
-                            <span>Call Responder</span>
-                          </a>
+                          <span className="rn-ass-sub">{statusLabel(need.status)}</span>
                         </div>
                       </div>
                     )}
@@ -273,6 +275,9 @@ export const ReporterPortal: React.FC<ReporterPortalProps> = ({
                       </div>
                       
                       <div className="rn-comms-stream">
+                        {messages.length === 0 && (
+                          <p className="rn-comms-empty">No ground updates yet. Messages you send here are visible to the responding team.</p>
+                        )}
                         {messages.map((m, idx) => (
                           <div key={idx} className={`rn-chat-msg ${m.sender === currentUser.name ? 'is-self' : ''}`}>
                             <div className="rn-chat-meta">

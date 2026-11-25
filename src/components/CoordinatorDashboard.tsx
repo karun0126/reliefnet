@@ -54,11 +54,15 @@ import {
   Building
 } from 'lucide-react';
 import { INITIAL_ACTIVITY_LOG } from '../services/mockData';
+import { ApiDashboardStats } from '../services/api';
 
 interface CoordinatorDashboardProps {
   needs: NeedReport[];
   volunteers: Volunteer[];
+  /** Live counters from /api/dashboard/stats. */
+  stats?: ApiDashboardStats | null;
   onDispatchVolunteer: (needId: string, volunteerId: string) => void;
+  onToggleVolunteerAvailability?: (volunteerId: string, available: boolean) => void;
   onOpenReportModal: () => void;
   onSwitchToLanding: () => void;
   onSwitchRole?: (role: 'coordinator' | 'volunteer' | 'reporter') => void;
@@ -215,7 +219,9 @@ const INITIAL_INVENTORY: InventoryItem[] = [
 export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
   needs,
   volunteers,
+  stats,
   onDispatchVolunteer,
+  onToggleVolunteerAvailability,
   onOpenReportModal,
   onSwitchToLanding,
   onSwitchRole,
@@ -225,7 +231,7 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
 }) => {
   const [urgencyFilter, setUrgencyFilter] = useState<'ALL' | 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'RESOLVED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedIncidentId, setSelectedIncidentId] = useState<string>(needs[0]?.id || 'RN-8941');
+  const [selectedIncidentId, setSelectedIncidentId] = useState<string>(needs[0]?.id || '');
   const [internalSidebarTab, setInternalSidebarTab] = useState<'operations' | 'incidents' | 'volunteers' | 'inventory' | 'geospatial' | 'analytics'>('operations');
   const sidebarActiveTab = activeSubTab || internalSidebarTab;
   const setSidebarActiveTab = (tab: 'operations' | 'incidents' | 'volunteers' | 'inventory' | 'geospatial' | 'analytics') => {
@@ -238,6 +244,8 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
   // Mission Workspace & Connecting Flowchart State
   const [missionMode, setMissionMode] = useState<'pipeline' | 'map' | 'personnel'>('pipeline');
   const [dispatchingNeedId, setDispatchingNeedId] = useState<string | null>(null);
+  // Coordinator's explicit responder choice per need; empty means "use the recommendation".
+  const [responderChoice, setResponderChoice] = useState<Record<string, string>>({});
   const [radarFilterLayer, setRadarFilterLayer] = useState<'all' | 'critical' | 'responders'>('all');
   
   const [digitalClock, setDigitalClock] = useState(() => {
@@ -258,21 +266,22 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [sidebarActiveTab]);
 
-  // Connected Flowchart Pipeline Stages
-  const [pipelineStages, setPipelineStages] = useState<Record<string, 'intake' | 'triage' | 'deployed' | 'resolved'>>({
-    'RN-8941': 'triage',
-    'RN-8940': 'intake',
-    'RN-8939': 'deployed',
-    'RN-8938': 'resolved',
-    'RN-8937': 'deployed',
-    'RN-8936': 'triage',
-    'RN-8935': 'intake',
-    'RN-8934': 'resolved'
-  });
+  // Connected Flowchart Pipeline Stages: real need status decides the column,
+  // an explicit advance (before the coordinator saves it) overrides it.
+  const [pipelineStages, setPipelineStages] = useState<Record<string, 'intake' | 'triage' | 'deployed' | 'resolved'>>({});
+
+  const stageOf = (need: NeedReport): 'intake' | 'triage' | 'deployed' | 'resolved' => {
+    const override = pipelineStages[need.id];
+    if (override) return override;
+    if (need.status === 'RESOLVED') return 'resolved';
+    if (need.status === 'ASSIGNED' || need.status === 'IN_PROGRESS') return 'deployed';
+    return need.priorityScore >= 60 ? 'triage' : 'intake';
+  };
 
   const advancePipelineStage = (needId: string) => {
+    const need = needs.find(n => n.id === needId);
     setPipelineStages(prev => {
-      const current = prev[needId] || 'intake';
+      const current = prev[needId] ?? (need ? stageOf(need) : 'intake');
       const next = current === 'intake' ? 'triage' : current === 'triage' ? 'deployed' : 'resolved';
       showToast(`Incident #${needId} advanced to ${next.toUpperCase()} stage`);
       return { ...prev, [needId]: next };
@@ -287,65 +296,8 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
     { id: 'RL-4', time: '23:35:50', callsign: 'HQ-COORDINATOR', text: 'Telemetry verified. Starlink link active.', channel: 'CH-1' }
   ]);
 
-  // Subview specific state
-  const [volunteerRoster, setVolunteerRoster] = useState<Volunteer[]>(() => {
-    // Ensure rich roster of certified responders
-    const extras: Volunteer[] = [
-      {
-        id: 'VOL-105',
-        name: 'Rajesh Patel',
-        role: 'Heavy Rescue & Structural Specialist',
-        phone: '+91 98122 88990',
-        email: 'rajesh.patel@reliefnet.org',
-        skills: ['Structural Evac', 'Heavy Equipment', 'First Aid'],
-        status: 'AVAILABLE',
-        location: { lat: 28.634, lng: 77.355, address: 'Sector 3 Staging Post' },
-        rating: 4.8,
-        completedMissions: 31,
-        distanceKm: 1.2
-      },
-      {
-        id: 'VOL-106',
-        name: 'Dr. Sunita Sen',
-        role: 'Senior Field Trauma Lead',
-        phone: '+91 98144 22334',
-        email: 'sunita.sen@reliefnet.org',
-        skills: ['Trauma Protocol', 'Pediatric Triage', 'Field Surgery'],
-        status: 'DEPLOYED',
-        location: { lat: 28.628, lng: 77.365, address: 'Sector 4 Medical Tent' },
-        rating: 5.0,
-        completedMissions: 54,
-        distanceKm: 0.6
-      },
-      {
-        id: 'VOL-107',
-        name: 'Vikram Malhotra',
-        role: 'Drone Recon Pilot & Comms Lead',
-        phone: '+91 98155 44556',
-        email: 'vikram.m@reliefnet.org',
-        skills: ['Thermal Drone Recon', 'Radio Mesh', 'GIS Mapping'],
-        status: 'AVAILABLE',
-        location: { lat: 28.639, lng: 77.348, address: 'Sector 14 Air Unit' },
-        rating: 4.7,
-        completedMissions: 22,
-        distanceKm: 1.8
-      },
-      {
-        id: 'VOL-108',
-        name: 'Ananya Roy',
-        role: 'Swift Water Specialist & K9 Handler',
-        phone: '+91 98166 77889',
-        email: 'ananya.roy@reliefnet.org',
-        skills: ['Swift Water Rescue', 'K9 Search', 'Inflatable Boat'],
-        status: 'AVAILABLE',
-        location: { lat: 28.625, lng: 77.369, address: 'East Valley Riverbank' },
-        rating: 4.9,
-        completedMissions: 39,
-        distanceKm: 1.1
-      }
-    ];
-    return [...volunteers, ...extras];
-  });
+  // Roster is the real backend list — no invented responders.
+  const volunteerRoster = volunteers;
 
   const [volunteerSkillFilter, setVolunteerSkillFilter] = useState<'ALL' | 'PARAMEDIC' | 'RESCUE' | 'DRONE' | 'DRIVER'>('ALL');
   const [inventoryList, setInventoryList] = useState<InventoryItem[]>(INITIAL_INVENTORY);
@@ -369,13 +321,19 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
 
   const selectedNeed = needs.find(n => n.id === selectedIncidentId) || needs[0];
 
-  // Dynamic counts for KPI Cards
-  const totalIncidents = 112;
-  const inProgressCount = 18;
-  const criticalCount = needs.filter(n => n.urgency === 'CRITICAL' && n.status !== 'RESOLVED').length || 6;
-  const deployedVolunteers = 34;
-  const availableVolunteers = 72;
-  const resolvedRate = '74%';
+  // KPI cards read the backend counters, so the dashboard and the landing page
+  // can never disagree about totals.
+  const totalIncidents = stats?.totalNeeds ?? needs.length;
+  const inProgressCount = stats?.assignedNeeds ?? 0;
+  const criticalCount = stats?.criticalNeeds ?? needs.filter(n => n.urgency === 'CRITICAL' && n.status !== 'RESOLVED').length;
+  const deployedVolunteers = volunteers.filter(v => v.status === 'DEPLOYED').length;
+  const availableVolunteers = stats?.availableVolunteers ?? volunteers.filter(v => v.status === 'AVAILABLE').length;
+  const resolvedRate = totalIncidents > 0
+    ? `${Math.round(((stats?.resolvedNeeds ?? 0) / totalIncidents) * 100)}%`
+    : '0%';
+  const highIncidents = stats?.highNeeds ?? needs.filter(n => n.urgency === 'HIGH').length;
+  const moderateIncidents = needs.filter(n => n.urgency === 'MEDIUM' || n.urgency === 'LOW').length;
+  const resolvedIncidents = stats?.resolvedNeeds ?? needs.filter(n => n.status === 'RESOLVED').length;
 
   // Filter incidents
   const filteredNeeds = needs.filter(n => {
@@ -414,6 +372,20 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
     return true;
   });
 
+  // Resolves which real volunteer a dispatch should send: the coordinator's pick,
+  // then the recommendation, then any volunteer who is not already deployed.
+  const chosenResponderId = (need: NeedReport): string => {
+    // A dispatched need must keep showing the responder it actually went to —
+    // that volunteer is now "On mission", so the recommendation would otherwise
+    // fall through to the next available person and misreport the assignment.
+    if (need.assignedVolunteerId) return need.assignedVolunteerId;
+    const explicit = responderChoice[need.id];
+    if (explicit && volunteers.some(v => v.id === explicit)) return explicit;
+    const recommendedId = need.recommendedVolunteer?.id;
+    if (recommendedId && volunteers.some(v => v.id === recommendedId)) return recommendedId;
+    return (volunteers.find(v => v.status !== 'DEPLOYED') ?? volunteers[0])?.id ?? '';
+  };
+
   const handleDispatch = (needId: string, volunteerId: string) => {
     onDispatchVolunteer(needId, volunteerId);
     
@@ -427,20 +399,14 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
     };
     setActivityLog(prev => [newLog, ...prev]);
 
-    // Update local volunteer status
-    setVolunteerRoster(prev => prev.map(v => v.id === volunteerId ? { ...v, status: 'DEPLOYED' } : v));
     showToast(`Dispatched ${vol?.name || 'Unit'} to Incident #${needId}`);
   };
 
   const handleToggleVolunteerDuty = (volId: string) => {
-    setVolunteerRoster(prev => prev.map(v => {
-      if (v.id === volId) {
-        const nextStatus = v.status === 'AVAILABLE' ? 'OFFLINE' : 'AVAILABLE';
-        showToast(`Updated ${v.name} status to ${nextStatus}`);
-        return { ...v, status: nextStatus };
-      }
-      return v;
-    }));
+    const volunteer = volunteers.find(v => v.id === volId);
+    const makeAvailable = volunteer?.status !== 'AVAILABLE';
+    onToggleVolunteerAvailability?.(volId, makeAvailable);
+    showToast(`${volunteer?.name || 'Volunteer'} marked ${makeAvailable ? 'AVAILABLE' : 'OFF DUTY'}`);
   };
 
   const handlePingRadio = (vol: Volunteer) => {
@@ -750,12 +716,12 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                         <h4 className="rn-fcol-name">Signal Intake</h4>
                       </div>
                       <span className="rn-fcol-count">
-                        {needs.filter(n => (pipelineStages[n.id] || 'intake') === 'intake').length}
+                        {needs.filter(n => stageOf(n) === 'intake').length}
                       </span>
                     </div>
 
                     <div className="rn-fcol-cards">
-                      {needs.filter(n => (pipelineStages[n.id] || 'intake') === 'intake').slice(0, 5).map((need) => (
+                      {needs.filter(n => stageOf(n) === 'intake').slice(0, 5).map((need) => (
                         <div key={need.id} className="rn-flow-card">
                           <div className="rn-fc-top">
                             <span className="rn-fc-id">#{need.id}</span>
@@ -779,7 +745,7 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                           </button>
                         </div>
                       ))}
-                      {needs.filter(n => (pipelineStages[n.id] || 'intake') === 'intake').length === 0 && (
+                      {needs.filter(n => stageOf(n) === 'intake').length === 0 && (
                         <div style={{ padding: '28px 12px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
                           No incoming signals in queue
                         </div>
@@ -795,12 +761,12 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                         <h4 className="rn-fcol-name">Neural Triage</h4>
                       </div>
                       <span className="rn-fcol-count">
-                        {needs.filter(n => pipelineStages[n.id] === 'triage').length}
+                        {needs.filter(n => stageOf(n) === 'triage').length}
                       </span>
                     </div>
 
                     <div className="rn-fcol-cards">
-                      {needs.filter(n => pipelineStages[n.id] === 'triage').slice(0, 5).map((need) => (
+                      {needs.filter(n => stageOf(n) === 'triage').slice(0, 5).map((need) => (
                         <div key={need.id} className="rn-flow-card border-crit">
                           <div className="rn-fc-top">
                             <span className="rn-fc-id">#{need.id}</span>
@@ -827,7 +793,7 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                           </button>
                         </div>
                       ))}
-                      {needs.filter(n => pipelineStages[n.id] === 'triage').length === 0 && (
+                      {needs.filter(n => stageOf(n) === 'triage').length === 0 && (
                         <div style={{ padding: '28px 12px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
                           All incidents triaged
                         </div>
@@ -843,12 +809,12 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                         <h4 className="rn-fcol-name">Field Deployed</h4>
                       </div>
                       <span className="rn-fcol-count">
-                        {needs.filter(n => pipelineStages[n.id] === 'deployed').length}
+                        {needs.filter(n => stageOf(n) === 'deployed').length}
                       </span>
                     </div>
 
                     <div className="rn-fcol-cards">
-                      {needs.filter(n => pipelineStages[n.id] === 'deployed').slice(0, 5).map((need) => (
+                      {needs.filter(n => stageOf(n) === 'deployed').slice(0, 5).map((need) => (
                         <div key={need.id} className="rn-flow-card border-high">
                           <div className="rn-fc-top">
                             <span className="rn-fc-id">#{need.id}</span>
@@ -873,7 +839,7 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                           </button>
                         </div>
                       ))}
-                      {needs.filter(n => pipelineStages[n.id] === 'deployed').length === 0 && (
+                      {needs.filter(n => stageOf(n) === 'deployed').length === 0 && (
                         <div style={{ padding: '28px 12px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
                           No active deployments in transit
                         </div>
@@ -889,12 +855,12 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                         <h4 className="rn-fcol-name">Stabilized</h4>
                       </div>
                       <span className="rn-fcol-count">
-                        {needs.filter(n => pipelineStages[n.id] === 'resolved').length}
+                        {needs.filter(n => stageOf(n) === 'resolved').length}
                       </span>
                     </div>
 
                     <div className="rn-fcol-cards">
-                      {needs.filter(n => pipelineStages[n.id] === 'resolved').slice(0, 5).map((need) => (
+                      {needs.filter(n => stageOf(n) === 'resolved').slice(0, 5).map((need) => (
                         <div key={need.id} className="rn-flow-card" style={{ borderColor: 'rgba(16, 185, 129, 0.25)' }}>
                           <div className="rn-fc-top">
                             <span className="rn-fc-id">#{need.id}</span>
@@ -912,7 +878,7 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                           </div>
                         </div>
                       ))}
-                      {needs.filter(n => pipelineStages[n.id] === 'resolved').length === 0 && (
+                      {needs.filter(n => stageOf(n) === 'resolved').length === 0 && (
                         <div style={{ padding: '28px 12px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
                           No stabilized incidents yet
                         </div>
@@ -1005,8 +971,13 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                                 className="rn-rc-dispatch-btn"
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  const responderId = chosenResponderId(need);
+                                  if (!responderId) {
+                                    showToast('No volunteer available to dispatch');
+                                    return;
+                                  }
                                   setDispatchingNeedId(need.id);
-                                  handleDispatch(need.id, need.recommendedVolunteer?.id || 'VOL-101');
+                                  handleDispatch(need.id, responderId);
                                   setTimeout(() => setDispatchingNeedId(null), 1200);
                                 }}
                               >
@@ -1058,8 +1029,6 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                           </div>
                           <div className="rn-vc-role">{vol.role}</div>
                           <div className="rn-vc-subline">
-                            <span>⭐ {vol.rating}</span>
-                            <span>•</span>
                             <span>{vol.completedMissions} Missions</span>
                             <span>•</span>
                             <span>📍 {vol.location.address}</span>
@@ -1112,7 +1081,7 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
             <div className="rn-subview-kpi-row">
               <div className="rn-subview-kpi-card">
                 <div className="rn-skpi-label">Immediate Triage</div>
-                <div className="rn-skpi-value" style={{ color: '#ef4444' }}>0{criticalCount}</div>
+                <div className="rn-skpi-value" style={{ color: '#ef4444' }}>{criticalCount}</div>
                 <div className="rn-skpi-hint">Requires volunteer response &lt; 15m</div>
               </div>
               <div className="rn-subview-kpi-card">
@@ -1121,14 +1090,14 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                 <div className="rn-skpi-hint">Volunteers currently on-scene</div>
               </div>
               <div className="rn-subview-kpi-card">
-                <div className="rn-skpi-label">Avg AI Triage Speed</div>
-                <div className="rn-skpi-value">1.4m</div>
-                <div className="rn-skpi-hint">Neural severity classifier 97.4%</div>
+                <div className="rn-skpi-label">Responders Available</div>
+                <div className="rn-skpi-value">{availableVolunteers}</div>
+                <div className="rn-skpi-hint">Off duty toggle set to available</div>
               </div>
               <div className="rn-subview-kpi-card">
-                <div className="rn-skpi-label">Incident Resolution SLA</div>
+                <div className="rn-skpi-label">Incident Resolution Rate</div>
                 <div className="rn-skpi-value">{resolvedRate}</div>
-                <div className="rn-skpi-hint">+8% vs municipal benchmarks</div>
+                <div className="rn-skpi-hint">Resolved share of all reported needs</div>
               </div>
             </div>
 
@@ -1153,21 +1122,21 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                   className={`rn-fpill ${urgencyFilter === 'HIGH' ? 'active-high' : ''}`}
                   onClick={() => setUrgencyFilter('HIGH')}
                 >
-                  High (24)
+                  High ({highIncidents})
                 </button>
                 <button 
                   type="button" 
                   className={`rn-fpill ${urgencyFilter === 'MEDIUM' ? 'active-medium' : ''}`}
                   onClick={() => setUrgencyFilter('MEDIUM')}
                 >
-                  Moderate (58)
+                  Moderate ({moderateIncidents})
                 </button>
                 <button 
                   type="button" 
                   className={`rn-fpill ${urgencyFilter === 'RESOLVED' ? 'active-resolved' : ''}`}
                   onClick={() => setUrgencyFilter('RESOLVED')}
                 >
-                  Resolved (24)
+                  Resolved ({resolvedIncidents})
                 </button>
               </div>
 
@@ -1183,7 +1152,11 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
             </div>
 
             <div className="rn-incident-cards-list">
-              {filteredNeeds.map((need) => (
+              {filteredNeeds.map((need) => {
+                const responderId = chosenResponderId(need);
+                const responder = volunteers.find(v => v.id === responderId);
+
+                return (
                 <div key={need.id} className="rn-dash-incident-card">
                   <div className="rn-dic-header">
                     <div className="rn-dic-meta-left">
@@ -1223,14 +1196,30 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                   <div className="rn-dic-actions-row">
                     <div className="rn-dic-responder">
                       <div className="rn-dic-resp-avatar">
-                        {need.recommendedVolunteer?.name ? need.recommendedVolunteer.name.split(' ').map(n => n[0]).join('') : 'KR'}
+                        {responder ? responder.name.split(' ').map(n => n[0]).join('') : '—'}
                       </div>
-                      <div>
-                        <div className="rn-dic-resp-name">
-                          Best Responder: {need.recommendedVolunteer?.name || 'Kavita Rao'} ({need.recommendedVolunteer?.role || 'Senior Paramedic'})
-                        </div>
+                      <div className="rn-dic-responder-pick">
+                        <label className="rn-dic-resp-label" htmlFor={`responder-${need.id}`}>
+                          DISPATCH TO
+                        </label>
+                        <select
+                          id={`responder-${need.id}`}
+                          className="rn-dic-resp-select"
+                          value={responderId}
+                          onChange={(e) => setResponderChoice(prev => ({ ...prev, [need.id]: e.target.value }))}
+                          disabled={need.status === 'ASSIGNED' || need.status === 'RESOLVED'}
+                        >
+                          {volunteers.length === 0 && <option value="">No volunteers on the roster</option>}
+                          {volunteers.map(v => (
+                            <option key={v.id} value={v.id} disabled={v.status === 'DEPLOYED'}>
+                              {v.name} · {v.status === 'DEPLOYED' ? 'On mission' : v.status === 'AVAILABLE' ? 'Available' : v.status}
+                            </option>
+                          ))}
+                        </select>
                         <div className="rn-dic-resp-dist">
-                          {need.recommendedVolunteer?.distance || '0.8 km away'} • Radio Verified
+                          {responder
+                            ? `${responder.location.address || 'Location not set'}${responder.skills.length ? ' • ' + responder.skills.slice(0, 3).join(', ') : ''}`
+                            : 'No volunteer selected'}
                         </div>
                       </div>
                     </div>
@@ -1240,7 +1229,13 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                         <button 
                           type="button" 
                           className="rn-dic-btn-dispatch"
-                          onClick={() => handleDispatch(need.id, need.recommendedVolunteer?.id || 'VOL-101')}
+                          onClick={() => {
+                            if (!responderId) {
+                              showToast('No volunteer available to dispatch');
+                              return;
+                            }
+                            handleDispatch(need.id, responderId);
+                          }}
                         >
                           <Send size={13} />
                           <span>Dispatch Responder</span>
@@ -1254,7 +1249,8 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1356,8 +1352,6 @@ export const CoordinatorDashboard: React.FC<CoordinatorDashboardProps> = ({
                         </div>
                         <div className="rn-vc-role">{vol.role}</div>
                         <div className="rn-vc-subline">
-                          <span>⭐ {vol.rating}</span>
-                          <span>•</span>
                           <span>{vol.completedMissions} Missions</span>
                           <span>•</span>
                           <span>📍 {vol.location.address}</span>

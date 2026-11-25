@@ -57,8 +57,9 @@ export function rankVolunteersForNeed(
       // Distance score (max 40 pts, decreases as distance increases)
       const distanceScore = Math.max(5, 40 - distance * 4.5);
 
-      // Experience score (up to 10 pts based on rating)
-      const expScore = (v.rating / 5.0) * 10;
+      // Experience score (up to 10 pts based on real completed missions;
+      // the backend keeps no rating column, so nothing is invented here)
+      const expScore = Math.min(10, v.completedMissions);
 
       const totalScore = Math.min(99, Math.round(skillScore + distanceScore + expScore));
 

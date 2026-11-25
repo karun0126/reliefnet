@@ -1859,6 +1859,60 @@ body, #root, .rn-app-root {
   margin: 0;
 }
 
+/* Mission status rail: shows the volunteer exactly where the need stands. */
+.rn-mission-status-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 10px 12px;
+  background: #f2faf6;
+  border: 1px solid #d6ecdf;
+  border-radius: 12px;
+}
+
+.rn-mission-status-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #52796f;
+  margin-right: 4px;
+}
+
+.rn-mission-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #7b8f87;
+  background: #ffffff;
+  border: 1px solid #dbe9e2;
+  border-radius: 9999px;
+  padding: 4px 10px;
+}
+
+.rn-mission-status-chip.is-done {
+  color: #047857;
+  background: #d1fae5;
+  border-color: #a7f3d0;
+}
+
+.rn-mission-status-chip.is-current {
+  color: #ffffff;
+  background: #0284c7;
+  border-color: #0284c7;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.28);
+}
+
+.rn-mission-status-note {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #047857;
+}
+
 .rn-spotlight-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2596,6 +2650,50 @@ body, #root, .rn-app-root {
   font-size: 12px;
   color: #52796f;
   font-weight: 700;
+}
+
+/* Reporter timeline status chip — mirrors the volunteer's update on the live card. */
+.rn-inc-status-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid #dbe9e2;
+  background: #f2faf6;
+  color: #52796f;
+}
+
+.rn-inc-status-tag.is-submitted {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+
+.rn-inc-status-tag.is-assigned {
+  color: #1d4ed8;
+  background: #dbeafe;
+  border-color: #bfdbfe;
+}
+
+.rn-inc-status-tag.is-in_progress {
+  color: #0369a1;
+  background: #e0f2fe;
+  border-color: #bae6fd;
+}
+
+.rn-inc-status-tag.is-resolved {
+  color: #047857;
+  background: #d1fae5;
+  border-color: #a7f3d0;
+}
+
+.rn-comms-empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: #52796f;
 }
 
 .rn-inc-title {
@@ -4001,6 +4099,38 @@ body, #root, .rn-app-root {
   font-weight: 600;
 }
 
+.rn-dic-responder-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rn-dic-resp-label {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #52796f;
+}
+
+.rn-dic-resp-select {
+  max-width: 240px;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #042318;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rn-dic-resp-select:disabled {
+  background: #eef4f1;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
 .rn-dic-btn-dispatch {
   background: #059669 !important;
   color: #ffffff !important;
@@ -5170,6 +5300,8 @@ body, #root, .rn-app-root {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  /* Tall forms must start at the top instead of being clipped above the scroll box */
+  justify-content: safe center;
 }
 
 .rn-auth-header-title h1 {
@@ -5512,4 +5644,272 @@ body, #root, .rn-app-root {
   align-items: center;
   gap: 12px;
   margin-top: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   VOLUNTEER REGISTRATION DETAILS (skills, location, travel radius)
+   -------------------------------------------------------------------------- */
+.rn-auth-step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: #52796f;
+}
+
+.rn-step-bars {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.rn-step-bar {
+  width: 28px;
+  height: 4px;
+  border-radius: 999px;
+  background: #d9ece2;
+}
+
+.rn-step-bar.active {
+  background: #059669;
+}
+
+.rn-field-hint {
+  font-size: 11px;
+  color: #52796f;
+  line-height: 1.4;
+}
+
+.rn-field-hint code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #047857;
+  background: #e7f7ef;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.rn-skills-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.rn-auth-right-pane .rn-skills-label-row label {
+  margin-bottom: 0;
+}
+
+.rn-skills-count {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: #047857;
+  background: #e7f7ef;
+  border: 1px solid #b7e4cd;
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+.rn-skills-pill-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.rn-skill-toggle-pill {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #2d4a3e;
+  background: #f4f8f5;
+  border: 1.5px solid #d2e4dc;
+  border-radius: 999px;
+  padding: 7px 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rn-skill-toggle-pill:hover {
+  border-color: #059669;
+  background: #ffffff;
+  color: #042318;
+}
+
+.rn-skill-toggle-pill.is-selected {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+  box-shadow: 0 3px 10px rgba(5, 150, 105, 0.25);
+}
+
+.rn-skill-toggle-pill:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: 2px;
+}
+
+.rn-loc-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.rn-loc-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.rn-detect-loc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: #047857;
+  background: #e7f7ef;
+  border: 1.5px solid #b7e4cd;
+  border-radius: 12px;
+  padding: 0 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rn-detect-loc-btn:hover {
+  background: #d5f2e3;
+  border-color: #059669;
+}
+
+.rn-coords-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.rn-coord-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rn-coord-field span {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #52796f;
+}
+
+.rn-coord-field input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #2d4a3e;
+  background: #eef4f0;
+}
+
+.rn-travel-slider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rn-auth-right-pane .rn-travel-slider-header label {
+  margin-bottom: 0;
+}
+
+.rn-slider-val-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: #047857;
+  background: #e7f7ef;
+  border: 1px solid #b7e4cd;
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+.rn-form-group input.rn-range-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 24px;
+  margin: 4px 0 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.rn-range-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--rn-range-fill, #d9ece2);
+}
+
+.rn-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 4px solid #059669;
+  box-shadow: 0 2px 6px rgba(4, 35, 24, 0.25);
+}
+
+.rn-range-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #d9ece2;
+}
+
+.rn-range-slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: #059669;
+}
+
+.rn-range-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 4px solid #059669;
+}
+
+.rn-range-slider:focus-visible {
+  outline: none;
+}
+
+.rn-range-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.18);
+}
+
+.rn-range-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #7d9a8e;
+  margin-top: 2px;
+}
+
+.rn-register-btn-row .rn-auth-primary-btn {
+  flex: 1;
+  width: auto;
+}
+
+.rn-register-btn-row .rn-auth-secondary-btn {
+  flex-shrink: 0;
 }

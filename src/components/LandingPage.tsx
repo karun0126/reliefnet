@@ -13,6 +13,7 @@ import {
   Compass 
 } from 'lucide-react';
 import { NeedReport, UserRole } from '../types';
+import { ApiDashboardStats } from '../services/api';
 
 interface LandingPageProps {
   onOpenDashboard: () => void;
@@ -21,6 +22,8 @@ interface LandingPageProps {
   onOpenReporterPortal: () => void;
   onOpenAuthModal: (mode: 'signin' | 'register', role?: UserRole) => void;
   needs: NeedReport[];
+  /** Live aggregate counters from /api/dashboard/stats. */
+  stats?: ApiDashboardStats | null;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
@@ -29,7 +32,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenVolunteerPortal,
   onOpenReporterPortal,
   onOpenAuthModal,
-  needs
+  needs,
+  stats
 }) => {
   const [isStoryModalOpen, setIsStoryModalOpen] = useState(false);
   const leafRef = useRef<HTMLDivElement>(null);
@@ -234,13 +238,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
 
         {/* =====================================================================
-            HERO STATS BAR (142k+ Requests helped, 894+ Active volunteers, 24/7)
+            HERO STATS BAR — live counts from the backend dashboard stats
             ===================================================================== */}
         <div className="rn-figma-stats-bar">
           <div className="rn-fstat-item">
             <div className="rn-fstat-icon"><Users size={20} /></div>
             <div className="rn-fstat-text">
-              <strong>142k+</strong>
+              <strong>{stats ? stats.resolvedNeeds.toLocaleString() : '—'}</strong>
               <span>Requests helped</span>
             </div>
           </div>
@@ -248,7 +252,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="rn-fstat-item">
             <div className="rn-fstat-icon"><MapPin size={20} /></div>
             <div className="rn-fstat-text">
-              <strong>894+</strong>
+              <strong>{stats ? stats.availableVolunteers.toLocaleString() : '—'}</strong>
               <span>Active volunteers</span>
             </div>
           </div>

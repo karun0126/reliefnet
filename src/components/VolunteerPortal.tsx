@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { NeedReport, CurrentUser } from '../types';
+import { api } from '../services/api';
 import { 
   CheckCircle, 
   MapPin, 
@@ -23,7 +24,7 @@ interface VolunteerPortalProps {
   assignedNeeds: NeedReport[];
   unassignedNearbyNeeds: NeedReport[];
   onUpdateStatus: (needId: string, status: 'IN_PROGRESS' | 'RESOLVED') => void;
-  onToggleAvailability: (volId: string) => void;
+  onToggleAvailability: (volId: string, available: boolean) => void;
   onClaimNeed: (needId: string) => void;
   onSwitchToLanding: () => void;
   onSwitchRole: (role: 'coordinator' | 'volunteer' | 'reporter') => void;
@@ -58,6 +59,29 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
   }, [activeTab]);
 
   const [isAvailable, setIsAvailable] = useState(true);
+
+  // Confirmation shown right after a status tap, so the volunteer can see the
+  // update was saved and that HQ and the reporter now see it too.
+  const [statusNote, setStatusNote] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!statusNote) return;
+    const timer = window.setTimeout(() => setStatusNote(null), 7000);
+    return () => window.clearTimeout(timer);
+  }, [statusNote]);
+
+  // Seed the duty toggle from the backend so a page reload cannot show
+  // "available" while the volunteer is actually off duty.
+  React.useEffect(() => {
+    const id = currentVolunteer.volunteerId;
+    if (!id) return;
+    api.volunteers
+      .get(id)
+      .then((volunteer) => setIsAvailable(volunteer.isAvailable))
+      .catch(() => {
+        // keep the optimistic default when the profile cannot be loaded
+      });
+  }, [currentVolunteer.volunteerId]);
   const [checklist, setChecklist] = useState<Record<string, boolean>>({
     'First Aid Trauma Pouch': true,
     'High-Visibility Rescue Vest': true,
@@ -72,6 +96,24 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
   const activeMission = assignedNeeds.find(n => n.status !== 'RESOLVED');
   const completedMissions = assignedNeeds.filter(n => n.status === 'RESOLVED');
 
+  // 0 = dispatched, 1 = en route / on scene, 2 = resolved
+  const missionStep = activeMission
+    ? activeMission.status === 'ASSIGNED'
+      ? 0
+      : activeMission.status === 'IN_PROGRESS'
+        ? 1
+        : 2
+    : 0;
+
+  const handleStatusChange = (needId: string, next: 'IN_PROGRESS' | 'RESOLVED') => {
+    onUpdateStatus(needId, next);
+    setStatusNote(
+      next === 'IN_PROGRESS'
+        ? 'Saved: EN ROUTE — HQ and the reporter can see this update.'
+        : 'Saved: MISSION RESOLVED — HQ and the reporter can see this update.',
+    );
+  };
+
   return (
     <div className="rn-volunteer-portal-clean">
       {/* Volunteer Header Profile Card */}
@@ -84,19 +126,24 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
             <div className="rn-vol-role-badge">CERTIFIED FIELD RESPONDER</div>
             <h2>{currentVolunteer.name}</h2>
             <div className="rn-vol-stats-inline">
-              <span>⭐ {currentVolunteer.rating || 4.9} Rating</span>
+              <span>🛡️ {currentVolunteer.completedMissions ?? 0} Missions Completed</span>
               <span>•</span>
-              <span>🛡️ {currentVolunteer.completedMissions || 42} Missions Completed</span>
-              <span>•</span>
-              <span>📍 {currentVolunteer.location?.address || 'Sector 4 Staging Depot'}</span>
-              <span>•</span>
-              <span>📡 Radius: {currentVolunteer.travelRadiusKm || 20}km</span>
+              <span>📍 {currentVolunteer.location?.address || 'Location not set'}</span>
+              {currentVolunteer.travelRadiusKm ? (
+                <>
+                  <span>•</span>
+                  <span>📡 Radius: {currentVolunteer.travelRadiusKm}km</span>
+                </>
+              ) : null}
             </div>
 
             <div className="rn-vol-skills-wrap">
-              {(currentVolunteer.skills || ['First Aid', 'Water Rescue', 'Drone Pilot']).map(s => (
+              {(currentVolunteer.skills ?? []).map(s => (
                 <span key={s} className="rn-skill-pill-active">{s}</span>
               ))}
+              {(currentVolunteer.skills ?? []).length === 0 && (
+                <span className="rn-skill-pill-active">No skills listed yet</span>
+              )}
             </div>
           </div>
         </div>
@@ -108,7 +155,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
             className={`rn-duty-toggle-btn ${isAvailable ? 'is-available' : 'is-offline'}`}
             onClick={() => {
               setIsAvailable(!isAvailable);
-              onToggleAvailability(currentVolunteer.id);
+              onToggleAvailability(currentVolunteer.id, !isAvailable);
             }}
           >
             <span className="rn-duty-dot" />
@@ -158,7 +205,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
                 <CheckCircle2 size={48} color="#10b981" />
                 <h3>No Dispatched Emergency Currently</h3>
                 <p>
-                  You are currently on active standby. When an emergency incident matches your certified skills within {currentVolunteer.travelRadiusKm || 20}km, HQ will dispatch you here instantly.
+                  You are currently on active standby. When an emergency incident matches your certified skills{currentVolunteer.travelRadiusKm ? ` within ${currentVolunteer.travelRadiusKm}km` : ''}, HQ will dispatch you here instantly.
                 </p>
                 <button
                   type="button"
@@ -179,7 +226,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
                     <span className="rn-spotlight-cat">{activeMission.category}</span>
                     <span className="rn-spotlight-id">Case #{activeMission.id}</span>
                   </div>
-                  <span className="rn-spotlight-eta">TARGET ETA: {activeMission.targetEta || '< 15m'}</span>
+                  <span className="rn-spotlight-eta">TARGET ETA: {activeMission.targetEta || 'Not set'}</span>
                 </div>
 
                 <h3 className="rn-spotlight-title">{activeMission.title}</h3>
@@ -199,7 +246,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
                     <Users size={18} color="#3b82f6" />
                     <div>
                       <strong>Stranded Civilians:</strong>
-                      <p>{activeMission.peopleCount || '5-10 people'}</p>
+                      <p>{activeMission.peopleCount || 'Not specified'}</p>
                     </div>
                   </div>
 
@@ -207,9 +254,23 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
                     <Phone size={18} color="#10b981" />
                     <div>
                       <strong>Civilian Reporter Contact:</strong>
-                      <p>{activeMission.reporterName || 'Ground Witness'} ({activeMission.reporterContact || '+91 98112 34567'})</p>
+                      <p>{activeMission.reporterName || 'Ground reporter'} ({activeMission.reporterContact || 'contact not provided'})</p>
                     </div>
                   </div>
+                </div>
+
+                {/* Where the mission stands, so the next button is obvious */}
+                <div className="rn-mission-status-strip">
+                  <span className="rn-mission-status-label">INCIDENT STATUS</span>
+                  {(['Dispatched', 'En route / On scene', 'Resolved'] as const).map((step, index) => (
+                    <span
+                      key={step}
+                      className={`rn-mission-status-chip ${index < missionStep ? 'is-done' : index === missionStep ? 'is-current' : ''}`}
+                    >
+                      {index < missionStep ? <Check size={12} /> : null}
+                      {step}
+                    </span>
+                  ))}
                 </div>
 
                 {/* Action Button Controls */}
@@ -218,7 +279,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
                     <button
                       type="button"
                       className="rn-btn-start-nav"
-                      onClick={() => onUpdateStatus(activeMission.id, 'IN_PROGRESS')}
+                      onClick={() => handleStatusChange(activeMission.id, 'IN_PROGRESS')}
                     >
                       <Navigation size={18} />
                       <span>Start Navigation / En Route to Scene</span>
@@ -229,7 +290,7 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
                     <button
                       type="button"
                       className="rn-btn-mark-resolved"
-                      onClick={() => onUpdateStatus(activeMission.id, 'RESOLVED')}
+                      onClick={() => handleStatusChange(activeMission.id, 'RESOLVED')}
                     >
                       <CheckCircle size={18} />
                       <span>Confirm Safe Evacuation / Mark Mission Resolved</span>
@@ -254,6 +315,8 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
                     <span>Call Civilian On-Scene</span>
                   </a>
                 </div>
+
+                {statusNote && <p className="rn-mission-status-note">✓ {statusNote}</p>}
               </div>
             )}
 
@@ -339,23 +402,26 @@ export const VolunteerPortal: React.FC<VolunteerPortalProps> = ({
             <div className="rn-history-badges-row">
               <div className="rn-badge-card">
                 <Award size={28} color="#10b981" />
-                <h4>Swift Water Master</h4>
-                <span>Completed 15+ water extractions</span>
+                <h4>{currentVolunteer.completedMissions ?? 0} Missions Completed</h4>
+                <span>Counted from your closed tasks</span>
               </div>
               <div className="rn-badge-card">
                 <Shield size={28} color="#3b82f6" />
-                <h4>Rapid First Responder</h4>
-                <span>Average response time &lt; 12 mins</span>
+                <h4>{activeMission ? '1 Active Mission' : 'No Active Mission'}</h4>
+                <span>Straight from HQ dispatch</span>
               </div>
               <div className="rn-badge-card">
                 <CheckCircle size={28} color="#d97706" />
-                <h4>100% Mission Clearance</h4>
-                <span>Zero casualties on assigned sectors</span>
+                <h4>{isAvailable ? 'Available for Dispatch' : 'Off Duty'}</h4>
+                <span>{completedMissions.length} resolved incident(s) in your list</span>
               </div>
             </div>
 
             <div className="rn-resolved-history-list">
               <h3>Recently Resolved Missions</h3>
+              {completedMissions.length === 0 && (
+                <p className="rn-comms-empty">No resolved missions yet. Close a dispatched mission and it appears here.</p>
+              )}
               {completedMissions.map(m => (
                 <div key={m.id} className="rn-history-item">
                   <div className="rn-hist-icon">

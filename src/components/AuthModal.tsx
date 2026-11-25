@@ -20,6 +20,8 @@ import {
   Mail
 } from 'lucide-react';
 import { CurrentUser, UserRole, LocationCoordinates } from '../types';
+import { api, tokenStore, ApiDashboardStats } from '../services/api';
+import { errorMessage, toCurrentUser } from '../services/adapters';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -28,6 +30,8 @@ interface AuthModalProps {
   onReportWithoutSignin: () => void;
   initialMode?: 'signin' | 'register';
   initialRole?: UserRole;
+  /** Live counters, so the showcase pane matches the rest of the app. */
+  stats?: ApiDashboardStats | null;
 }
 
 const AVAILABLE_SKILLS = [
@@ -51,7 +55,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onLoginSuccess,
   onReportWithoutSignin,
   initialMode = 'signin',
-  initialRole = null
+  initialRole = null,
+  stats = null
 }) => {
   const [mode, setMode] = useState<'signin' | 'select_role' | 'register_details'>(() => 
     initialMode === 'register' ? 'select_role' : 'signin'
@@ -67,6 +72,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   // Register details
   const [name, setName] = useState('');
+  // Registration sets its own password; the sign-in demo default stays separate.
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [phone, setPhone] = useState('+91 98112 44556');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([
     'medical',
@@ -82,9 +90,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     address: 'Ghaziabad, NCR'
   });
   const [willingKm, setWillingKm] = useState<number>(15);
-  const [inviteCode, setInviteCode] = useState('RELIEF-HQ-2026');
+  const [inviteCode, setInviteCode] = useState('CODE_FOR_COORD');
   const [orgName, setOrgName] = useState('Red Cross Disaster Relief');
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // The modal stays mounted, so a later "Enter as Reporter" click has to move the
+  // form to the requested role instead of silently keeping the first default.
+  React.useEffect(() => {
+    if (!isOpen) return;
+    setMode(initialMode === 'register' ? 'select_role' : 'signin');
+    if (initialRole) setSelectedRole(initialRole);
+    // Account-scoped fields must not carry over from whoever used the modal last.
+    setEmail('');
+    setName('');
+    setRegPassword('');
+    setRegConfirmPassword('');
+    setAuthError(null);
+  }, [isOpen, initialMode, initialRole]);
 
   if (!isOpen) return null;
 
@@ -117,85 +140,124 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Quick Demo Logins for the 3 Individuals
-  const handleQuickLogin = (role: 'coordinator' | 'volunteer' | 'reporter') => {
-    if (role === 'coordinator') {
-      onLoginSuccess({
-        id: 'COORD-01',
-        name: 'Dr. Priya Sen',
-        email: 'coord@ngo.com',
-        role: 'coordinator',
-        organization: 'National Disaster Coordination HQ',
-        phone: '+91 98110 99887'
-      });
-    } else if (role === 'volunteer') {
-      onLoginSuccess({
-        id: 'VOL-101',
-        name: 'Kavita Rao',
-        email: 'vol@ngo.com',
-        role: 'volunteer',
-        phone: '+91 98990 11223',
-        skills: ['First Aid', 'Swift Water Rescue', 'Paramedic', 'Logistics'],
-        location: { lat: 28.6310, lng: 77.3600, address: 'Sector 4 Staging Post' },
-        travelRadiusKm: 20,
-        rating: 4.9,
-        completedMissions: 42
-      });
-    } else {
-      onLoginSuccess({
-        id: 'REP-204',
-        name: 'Sunita Sharma',
-        email: 'rep@ngo.com',
-        role: 'reporter',
-        phone: '+91 98112 34567',
-        location: { lat: 28.6300, lng: 77.3620, address: 'Sector 4 Community' }
-      });
+  /**
+   * Demo logins now hit the real API: sign in with the demo account, and create it
+   * on first use (the backend registers volunteers/reporters, and coordinators
+   * with the invite code).
+   */
+  const handleQuickLogin = async (role: 'coordinator' | 'volunteer' | 'reporter') => {
+    if (isSubmitting) return;
+
+    const accounts = {
+      coordinator: { name: 'Dr. Priya Sen', email: 'coord@reliefnet.dev', password: 'Demo1234!', apiRole: 'COORDINATOR' as const },
+      volunteer: { name: 'Kavita Rao', email: 'vol@reliefnet.dev', password: 'Demo1234!', apiRole: 'VOLUNTEER' as const },
+      reporter: { name: 'Sunita Sharma', email: 'rep@reliefnet.dev', password: 'Demo1234!', apiRole: 'REPORTER' as const }
+    };
+    const account = accounts[role];
+
+    setIsSubmitting(true);
+    setAuthError(null);
+    try {
+      let auth;
+      try {
+        auth = await api.auth.login(account.email, account.password);
+      } catch {
+        // First visit: the demo account does not exist yet
+        auth = role === 'coordinator'
+          ? await api.auth.registerCoordinator({
+              name: account.name,
+              email: account.email,
+              password: account.password,
+              inviteCode: 'CODE_FOR_COORD'
+            })
+          : await api.auth.register({
+              name: account.name,
+              email: account.email,
+              password: account.password,
+              role: account.apiRole as 'VOLUNTEER' | 'REPORTER'
+            });
+      }
+
+      tokenStore.set(auth.token);
+      onLoginSuccess(toCurrentUser(auth));
+      onClose();
+    } catch (error) {
+      setAuthError(errorMessage(error));
+    } finally {
+      setIsSubmitting(false);
     }
-    onClose();
   };
 
-  const handleSignInSubmit = (e: React.FormEvent) => {
+  const handleSignInSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) {
-      setAuthError('Please enter your email address');
+    if (isSubmitting) return;
+    if (!email.trim() || !password) {
+      setAuthError('Please enter your email and password');
       return;
     }
 
-    const lower = email.toLowerCase();
-    if (lower.includes('vol')) {
-      handleQuickLogin('volunteer');
-    } else if (lower.includes('coord') || lower.includes('admin')) {
-      handleQuickLogin('coordinator');
-    } else {
-      handleQuickLogin('reporter');
+    setIsSubmitting(true);
+    setAuthError(null);
+    try {
+      const auth = await api.auth.login(email.trim(), password);
+      tokenStore.set(auth.token);
+      onLoginSuccess(toCurrentUser(auth));
+      onClose();
+    } catch (error) {
+      setAuthError(errorMessage(error));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     const userName = name.trim() || (
       selectedRole === 'coordinator' ? 'Coordinator Lead' :
       selectedRole === 'volunteer' ? 'Field Volunteer' : 'Community Reporter'
     );
+    const userEmail = email.trim();
 
-    const userEmail = email.trim() || `${selectedRole}@reliefnet.org`;
+    if (!userEmail) {
+      setAuthError('Email is required');
+      return;
+    }
+    if (regPassword.length < 6) {
+      setAuthError('Password must be at least 6 characters');
+      return;
+    }
+    if (regPassword !== regConfirmPassword) {
+      setAuthError('Passwords do not match');
+      return;
+    }
 
-    const newUser: CurrentUser = {
-      id: `USER-${Date.now().toString().slice(-4)}`,
-      name: userName,
-      email: userEmail,
-      role: selectedRole,
-      phone,
-      location: coords,
-      skills: selectedRole === 'volunteer' ? selectedSkills : undefined,
-      travelRadiusKm: selectedRole === 'volunteer' ? willingKm : undefined,
-      organization: selectedRole === 'coordinator' ? orgName : undefined,
-      completedMissions: selectedRole === 'volunteer' ? 0 : undefined,
-      rating: selectedRole === 'volunteer' ? 5.0 : undefined
-    };
+    setIsSubmitting(true);
+    setAuthError(null);
+    try {
+      const auth = selectedRole === 'coordinator'
+        ? await api.auth.registerCoordinator({
+            name: userName,
+            email: userEmail,
+            password: regPassword,
+            inviteCode: inviteCode.trim()
+          })
+        : await api.auth.register({
+            name: userName,
+            email: userEmail,
+            password: regPassword,
+            role: selectedRole.toUpperCase() as 'VOLUNTEER' | 'REPORTER'
+          });
 
-    onLoginSuccess(newUser);
-    onClose();
+      tokenStore.set(auth.token);
+      onLoginSuccess(toCurrentUser(auth));
+      onClose();
+    } catch (error) {
+      setAuthError(errorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -251,11 +313,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           <div className="rn-auth-stats-grid">
             <div className="rn-auth-stat-box">
-              <div className="rn-stat-val">2.4k</div>
+              <div className="rn-stat-val">
+                {stats ? stats.resolvedNeeds.toLocaleString() : '—'}
+              </div>
               <div className="rn-stat-lbl">Needs resolved</div>
             </div>
             <div className="rn-auth-stat-box">
-              <div className="rn-stat-val">340</div>
+              <div className="rn-stat-val">
+                {stats ? stats.availableVolunteers.toLocaleString() : '—'}
+              </div>
               <div className="rn-stat-lbl">Volunteers active</div>
             </div>
           </div>
@@ -344,7 +410,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </div>
                     <div className="rn-demo-card-info">
                       <strong>Coordinator</strong>
-                      <span>coord@ngo.com</span>
+                      <span>coord@reliefnet.dev</span>
                     </div>
                   </button>
 
@@ -359,7 +425,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </div>
                     <div className="rn-demo-card-info">
                       <strong>Volunteer</strong>
-                      <span>vol@ngo.com</span>
+                      <span>vol@reliefnet.dev</span>
                     </div>
                   </button>
 
@@ -374,7 +440,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </div>
                     <div className="rn-demo-card-info">
                       <strong>Reporter</strong>
-                      <span>rep@ngo.com</span>
+                      <span>rep@reliefnet.dev</span>
                     </div>
                   </button>
                 </div>
@@ -479,7 +545,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="button"
                 className="rn-auth-primary-btn"
-                onClick={() => setMode('register_details')}
+                onClick={() => {
+                  // Re-entering the form must not resubmit the previous attempt's password.
+                  setRegPassword('');
+                  setRegConfirmPassword('');
+                  setAuthError(null);
+                  setMode('register_details');
+                }}
               >
                 <span>Continue</span>
                 <ArrowRight size={16} />
@@ -516,6 +588,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               </div>
 
+              {authError && (
+                <div className="rn-auth-alert-banner">
+                  <span>{authError}</span>
+                </div>
+              )}
+
               <form onSubmit={handleRegisterSubmit} className="rn-auth-form scrollable">
                 <div className="rn-form-group">
                   <label htmlFor="reg-name">YOUR FULL NAME</label>
@@ -541,6 +619,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   />
                 </div>
 
+                <div className="rn-form-group">
+                  <label htmlFor="reg-password">PASSWORD</label>
+                  <input
+                    id="reg-password"
+                    type="password"
+                    placeholder="At least 6 characters"
+                    value={regPassword}
+                    onChange={e => setRegPassword(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
+                </div>
+
+                <div className="rn-form-group">
+                  <label htmlFor="reg-confirm-password">CONFIRM PASSWORD</label>
+                  <input
+                    id="reg-confirm-password"
+                    type="password"
+                    placeholder="Re-enter your password"
+                    value={regConfirmPassword}
+                    onChange={e => setRegConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
+                </div>
+
                 {/* ROLE SPECIFIC: Volunteer Skills & Radius */}
                 {selectedRole === 'volunteer' && (
                   <>
@@ -557,6 +661,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                               key={skill}
                               type="button"
                               className={`rn-skill-toggle-pill ${isSel ? 'is-selected' : ''}`}
+                              aria-pressed={isSel}
                               onClick={() => handleToggleSkill(skill)}
                             >
                               {skill}
@@ -610,6 +715,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         value={willingKm}
                         onChange={e => setWillingKm(Number(e.target.value))}
                         className="rn-range-slider"
+                        style={{
+                          '--rn-range-fill': `linear-gradient(to right, #059669 ${((willingKm - 1) / 49) * 100}%, #d9ece2 ${((willingKm - 1) / 49) * 100}%)`
+                        } as React.CSSProperties}
+                        aria-label="Willing to travel distance in kilometres"
                       />
                       <div className="rn-range-ends">
                         <span>1km</span>
@@ -644,7 +753,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         required
                       />
                       <span className="rn-field-hint">
-                        Default demo code: <code>RELIEF-HQ-2026</code>
+                        Default demo code: <code>CODE_FOR_COORD</code>
                       </span>
                     </div>
                   </>
